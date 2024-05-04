@@ -4,10 +4,10 @@ requires = ["hatchling"]
 
 [project]
 name = "epochrony"
-version = "0.0.0"
+version = "0.0.1"
 description = "Time and date scheduling service"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 
 authors = [{ name = "Voquis Limited", email = "opensource@voquis.com" }]
 

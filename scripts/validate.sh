@@ -9,12 +9,18 @@ echo "Using package name: $PACKAGE_NAME"
 # Install development dependencies with pip
 pip install .[dev]
 
+# Install nodejs dependencies for pyright
+npm install pyright
+
 # Run formatting checks
 flake8
 
 # Run linting checks
 black --check --diff .
 pylint src tests
+
+# Run static type checks
+./node_modules/.bin/pyright
 
 # Run tests and generate coverage reports
 pytest --cov="$PACKAGE_NAME" \
