@@ -185,14 +185,15 @@ This is a single escalation.
 A task may be configured to have multiple escalations of varying durations.
 Escalations attributes are customisable.
 In the example below, task `A` should initially be completed in a 3-day window.
-If this is not completed, then:
-- after 2 days, the task should be escalated to `highlight`
-- after a further 2 days, the task should be escalated to `warning`
-- after another 2 days, the task should be escalated to `danger`
+If this is not completed within 3 days, then:
+- the task should be escalated to `highlight`
+- After 1 day in the `highlight` state, the task should be escalated to `warning`
+- after 3 days in the `warning` state, the task should be escalated to `danger`
 
-The last escalation may optionally either:
-- expire the task
+The last escalation may optionally:
+- expire
 - repeat indefinitely
+- extend indefinitely
 
 ```mermaid
 gantt
@@ -205,12 +206,182 @@ gantt
     Task A (initial wait, missed): crit, a1, 2024-01-01, 3d
     Task A due: milestone, 2024-01-01, 0d
 
-    Task A (highlight, missed): crit, b1, after a1, 2d
+    Task A (highlight, missed): crit, b1, after a1, 1d
     Task A highlighted: milestone, 2024-01-04, 0d
 
-    Task A (warning, missed): crit, c1, after b1, 2d
-    Task A in warning: milestone, 2024-01-06, 0d
+    Task A (warning, missed): crit, c1, after b1, 3d
+    Task A in warning: milestone, 2024-01-05, 0d
 
     Task A (danger, missed): crit, d1, after c1, 2d
     Task A in danger: milestone, 2024-01-08, 0d
+```
+
+### Mutation
+A schedule may mutate multiple times over time either by:
+- `occurrences` after some number of iterations of the task
+- `interval` after a fixed interval from the previous task
+- `timestamp` after a fixed point in time
+- `cron` on a repeating expression
+
+#### Interval mutation
+In this mutation, the schedule may either extend or contract.
+In the example below, Schedule `1` initially defines tasks that must be completed every 2 days.
+After a fixed timestamp on `2024-01-04`, subsequent tasks transition to 4 days.
+There are two scenarios, where the user completes the task:
+- before the transition
+- after the transition
+
+The user completes task `A` on the last allowable day, starting the beginning of task `B`.
+
+```mermaid
+gantt
+  %% Config
+  dateFormat YYYY-MM-DD
+  tickInterval 1day
+
+  section Schedule
+    %% Thresholds
+    Transition (i): milestone, 2024-01-04, 0d
+
+  section Before
+    Task A (old interval): active, bef1, 2024-01-01, 2d
+    Task A due: milestone, 2024-01-01, 0d
+    Task A Complete: milestone, 2024-01-03, 0d
+    Task B (old interval): active, bef2, after bef1, 2d
+    Task C (new interval): bef3, after bef2, 4d
+
+  section After
+    Task A (old interval): active, aft1, 2024-01-01, 2d
+    Task A due: milestone, 2024-01-01, 0d
+    Task A (escalate):crit, aft2, after aft1, 3d
+    Task A Complete: milestone, 2024-01-06, 0d
+    Task B (new interval): active, aft3, after aft2, 4d
+    Task C (new interval): aft4, after aft3, 4d
+```
+
+### Dependency
+A schedule may depend on another schedule in the following ways:
+- `occurrences` after some number of iterations of tasks in schedule 1, a task in schedule 2 starts
+- `interval` after a period of time after schedule 1 has started, schedule 2 starts
+
+### Grouping
+
+When tasks start or are escalated, a user may need to notified.
+
+### Undo
+Allow a completed task to be marked as incomplete within a specified time window.
+
+## Complete example
+The following example covers the following scenarios:
+- Multiple schedules
+  - Schedule 1 defines a recurring 4-day task (A, B)
+  - Schedule 2 defines a 6-day task (X, Y)
+- Escalations
+  - Schedule 1 defines 2 2-day escalations, with the last escalation extending infinitely
+- Mutations
+  - Schedule 1 extends
+  <!-- - Schedule 2 defines a 1 2-day escalation, with the last escalation -->
+- Dependent schedules
+  - Schedule 2
+- Expiry
+- Variable intervals
+- Notifications grouping
+```mermaid
+
+gantt
+  %% Config
+  dateFormat YYYY-MM-DD
+  tickInterval 1day
+
+  %% Schedule 1
+  section Schedule 1
+
+    %% Task A (initial)
+    Task A: active, s1a1, 2024-01-01, 4d
+    Notify (task due): milestone, 2024-01-01, 0d
+    Notify (2 days passed): milestone, 2024-01-03, 0d
+    Notify (1 day left): milestone, 2024-01-04, 0d
+
+    %% Task A first escalation
+    Escalation A: crit, s1a2, after s1a1, 2d
+    Notify (escalate A): milestone, 2024-01-05, 0d
+    Notify (escalate A, one day left): milestone, 2024-01-06, 0d
+
+    %% Task A second escalation (repeated)
+    Escalation B (1): crit, s1a3, after s1a2, 2d
+    Notify (escalate B): milestone, 2024-01-07, 0d
+    Notify (escalate B, one day left): milestone, 2024-01-08, 0d
+
+    %% Task A (2) third escalation (repeated)
+    Escalation B (2): crit, s1a4, after s1a3, 2d
+    Notify (escalate B): milestone, 2024-01-09, 0d
+    Notify (escalate B, one day left): milestone, 2024-01-10, 0d
+
+    %% Task B
+    Task B: active, s1b1, after s1a4, 4d
+    Notify (task due): milestone, 2024-01-11, 0d
+
+  %% section Schedule 2
+    Task X: active, s2x1, 2024-01-01, 4d
+```
+
+## Entities and relationships
+This section describes the entities that are used to define tasks as well as those created by user interactions.
+
+> Note that attribute definitions follow [PostgreSQL data types](https://www.postgresql.org/docs/current/datatype.html)
+
+```mermaid
+erDiagram
+  %% Entities
+  SCHEDULE {
+    %% Task configuration
+    text schedule_name
+
+    %% Start configuration
+    timestamp first_task_start_timestamp
+    %% End configuration
+    boolean stop_before_last_task
+    timestamp last_task_end_timestamp
+    timestamp last_task_end_occurrences
+    %% Undo configuration
+    interval undo_window_duration
+  }
+
+  SCHEDULE-INTERVAL {
+    text task_name
+    interval task_duration
+    integer rank
+  }
+
+  SCHEDULE-NOTIFICATION {
+  }
+
+  SCHEDULE-ESCALATION {
+    text name
+    interval duration
+    integer rank
+  }
+
+  SCHEDULE-ESCALATION-NOTIFICATION {
+  }
+
+  NOTIFICATION-DEFINITION {
+    interval notification_before_start_duration
+    interval notification_after_start_duration
+    interval notification_before_end_duration
+    interval notification_after_end_duration
+  }
+
+  TASK {
+    timestamp start_timestamp
+    timestamp end_timestamp
+    boolean completed
+  }
+
+  %% Relationships
+  SCHEDULE ||--o{ SCHEDULE-NOTIFICATION : notifications
+  SCHEDULE-NOTIFICATION ||--o{ NOTIFICATION-DEFINITION : notification
+  SCHEDULE ||--o{ SCHEDULE-ESCALATION : escalations
+  SCHEDULE-ESCALATION-NOTIFICATION ||--o{ NOTIFICATION-DEFINITION : notification
+  SCHEDULE ||--o{ TASK : defines
 ```
